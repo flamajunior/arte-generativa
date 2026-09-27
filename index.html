@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caleidoscópio Vivo</title>
+<style>
+  :root {
+    --bg: #07070c;
+    --panel: rgba(18, 18, 28, 0.82);
+    --border: rgba(255, 255, 255, 0.1);
+    --text: #e8e8f0;
+    --muted: #8a8aa0;
+    --accent: #b388ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+
+  .panel {
+    position: fixed; top: 16px; left: 16px; width: 260px; max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    transition: transform .25s ease, opacity .25s ease;
+  }
+  .panel.hidden { transform: translateX(calc(-100% - 24px)); opacity: 0; pointer-events: none; }
+  h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: .02em; }
+  .sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+
+  .row { margin-bottom: 12px; }
+  .row label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .row label span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .palettes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 14px; }
+  .pal { height: 26px; border-radius: 7px; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .pal.active { border-color: #fff; }
+
+  .toggles { display: flex; gap: 14px; font-size: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toggles label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .toggles input { accent-color: var(--accent); }
+
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  button.btn {
+    background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 6px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  button.btn:hover { background: rgba(255,255,255,0.12); }
+  button.btn.primary { background: var(--accent); color: #140a26; border-color: transparent; font-weight: 600; }
+  .keys { font-size: 11px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
+  kbd { background: rgba(255,255,255,0.08); border-radius: 4px; padding: 0 5px; font-family: inherit; }
+
+  .fab {
+    position: fixed; top: 16px; left: 16px; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text); font-size: 18px;
+    cursor: pointer; display: none;
+  }
+  .fab.show { display: block; }
+
+  @media (max-width: 600px) {
+    .panel { top: auto; bottom: 16px; left: 16px; right: 16px; width: auto; max-height: 55vh; }
+    .panel.hidden { transform: translateY(calc(100% + 24px)); }
+    .keys { display: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<button class="fab" id="fab" title="Mostrar controles (H)">☰</button>
+
+<div class="panel" id="panel">
+  <h1>Caleidoscópio Vivo</h1>
+  <p class="sub">Clique e arraste na tela para jogar tinta.</p>
+
+  <div class="palettes" id="palettes"></div>
+
+  <div class="row">
+    <label><span>Simetria</span><span id="v-sym"></span></label>
+    <input type="range" id="sym" min="1" max="16" step="1" value="8">
+  </div>
+  <div class="row">
+    <label><span>Partículas</span><span id="v-count"></span></label>
+    <input type="range" id="count" min="20" max="800" step="10" value="250">
+  </div>
+  <div class="row">
+    <label><span>Caos</span><span id="v-chaos"></span></label>
+    <input type="range" id="chaos" min="0" max="100" step="1" value="40">
+  </div>
+  <div class="row">
+    <label><span>Velocidade</span><span id="v-speed"></span></label>
+    <input type="range" id="speed" min="1" max="100" step="1" value="35">
+  </div>
+  <div class="row">
+    <label><span>Espessura</span><span id="v-width"></span></label>
+    <input type="range" id="width" min="1" max="60" step="1" value="12">
+  </div>
+  <div class="row">
+    <label><span>Rastro</span><span id="v-trail"></span></label>
+    <input type="range" id="trail" min="0" max="100" step="1" value="92">
+  </div>
+
+  <div class="toggles">
+    <label><input type="checkbox" id="mirror" checked> Espelhar</label>
+    <label><input type="checkbox" id="glow" checked> Brilho</label>
+    <label><input type="checkbox" id="drift" checked> Cores vivas</label>
+  </div>
+
+  <div class="buttons">
+    <button class="btn" id="b-random">🎲 Surpresa</button>
+    <button class="btn" id="b-pause">⏸ Pausar</button>
+    <button class="btn" id="b-clear">🧽 Limpar</button>
+    <button class="btn" id="b-hide">👁 Esconder</button>
+    <button class="btn primary" id="b-save" style="grid-column: span 2">⬇ Baixar PNG</button>
+  </div>
+
+  <div class="keys">
+    <kbd>Espaço</kbd> pausar · <kbd>R</kbd> surpresa · <kbd>C</kbd> limpar<br>
+    <kbd>S</kbd> salvar · <kbd>H</kbd> esconder painel
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const $ = id => document.getElementById(id);
+
+  // Paletas: matiz base, variação, saturação, luminosidade, fundo
+  const PALETTES = [
+    { name: 'Neon',     hue: 280, spread: 120, sat: 95, light: 62, bg: '#07070c' },
+    { name: 'Oceano',   hue: 195, spread: 50,  sat: 85, light: 58, bg: '#03101a' },
+    { name: 'Fogo',     hue: 15,  spread: 40,  sat: 100, light: 55, bg: '#0f0503' },
+    { name: 'Floresta', hue: 120, spread: 60,  sat: 60, light: 52, bg: '#040d06' },
+    { name: 'Arco-íris',hue: 0,   spread: 360, sat: 90, light: 60, bg: '#08080a' },
+  ];
+
+  const state = {
+    palette: PALETTES[0],
+    sym: 8, count: 250, chaos: 40, speed: 35, width: 12, trail: 92,
+    mirror: true, glow: true, drift: true,
+    paused: false,
+  };
+
+  let W = 0, H = 0, cx = 0, cy = 0, dpr = 1;
+  let t = 0, hueShift = 0;
+  let seedA = Math.random() * 1000, seedB = Math.random() * 1000;
+  let particles = [];
+
+  // ---------- Partículas ----------
+  function spawn(x, y) {
+    const r = Math.min(W, H) * 0.45;
+    if (x === undefined) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * r;
+      x = cx + Math.cos(a) * d;
+      y = cy + Math.sin(a) * d;
+    }
+    return {
+      x, y, px: x, py: y,
+      life: 60 + Math.random() * 240,
+      hueOff: (Math.random() - 0.5) * state.palette.spread,
+      w: 0.3 + Math.random() * 0.7,
+    };
+  }
+
+  function syncCount() {
+    while (particles.length < state.count) particles.push(spawn());
+    if (particles.length > state.count) particles.length = state.count;
+  }
+
+  // Campo de fluxo pseudo-aleatório (soma de senos) — suave e barato
+  function flowAngle(x, y) {
+    const s = 0.002 + state.chaos * 0.00008;
+    const n = Math.sin(x * s + seedA + t * 0.3) + Math.cos(y * s + seedB - t * 0.2)
+            + Math.sin((x + y) * s * 0.7 + t * 0.1);
+    return n * Math.PI * (0.5 + state.chaos / 40);
+  }
+
+  function step() {
+    const sp = 0.4 + state.speed / 20;
+    const maxR = Math.hypot(W, H) * 0.6;
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      p.px = p.x; p.py = p.y;
+      const a = flowAngle(p.x, p.y);
+      p.x += Math.cos(a) * sp;
+      p.y += Math.sin(a) * sp;
+      p.life--;
+      if (p.life <= 0 || Math.hypot(p.x - cx, p.y - cy) > maxR) {
+        particles[i] = spawn();
+      }
+    }
+  }
+
+  // ---------- Desenho com simetria ----------
+  function draw() {
+    const pal = state.palette;
+    // Esmaece o quadro anterior para criar rastros
+    const fade = state.trail >= 100 ? 0 : (1 - state.trail / 100) * 0.35 + 0.004;
+    if (fade > 0) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.globalCompositeOperation = state.glow ? 'lighter' : 'source-over';
+    ctx.lineCap = 'round';
+
+    const n = state.sym;
+    const rots = [];
+    for (let k = 0; k < n; k++) {
+      const ang = (k / n) * Math.PI * 2;
+      rots.push([Math.cos(ang), Math.sin(ang)]);
+    }
+    const alpha = state.glow ? 0.35 : 0.6;
+
+    for (const p of particles) {
+      const x0 = p.px - cx, y0 = p.py - cy;
+      const x1 = p.x - cx,  y1 = p.y - cy;
+      const hue = (pal.hue + p.hueOff + hueShift + 360) % 360;
+      const lifeFade = Math.min(1, p.life / 40);
+      ctx.strokeStyle = `hsla(${hue}, ${pal.sat}%, ${pal.light}%, ${alpha * lifeFade})`;
+      ctx.lineWidth = (state.width / 10) * p.w;
+      ctx.beginPath();
+      for (const [c, s] of rots) {
+        ctx.moveTo(cx + x0 * c - y0 * s, cy + x0 * s + y0 * c);
+        ctx.lineTo(cx + x1 * c - y1 * s, cy + x1 * s + y1 * c);
+        if (state.mirror) {
+          ctx.moveTo(cx + x0 * c + y0 * s, cy + x0 * s - y0 * c);
+          ctx.lineTo(cx + x1 * c + y1 * s, cy + x1 * s - y1 * c);
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function loop() {
+    if (!state.paused) {
+      t += 0.004 + state.speed * 0.00008;
+      if (state.drift) hueShift = (hueShift + 0.15) % 360;
+      step();
+      draw();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Tela ----------
+  function clear() {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = state.palette.bg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2; cy = H / 2;
+    clear();
+    particles = [];
+    syncCount();
+  }
+
+  // ---------- Pintar com o mouse/dedo ----------
+  let painting = false, splatIdx = 0;
+  function splat(e) {
+    const x = e.clientX, y = e.clientY;
+    for (let i = 0; i < 6; i++) {
+      const p = spawn(x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20);
+      p.life = 120 + Math.random() * 200;
+      particles[splatIdx % particles.length] = p;
+      splatIdx += 7; // espalha as substituições pelo array
+    }
+  }
+  canvas.addEventListener('pointerdown', e => { painting = true; canvas.setPointerCapture(e.pointerId); splat(e); });
+  canvas.addEventListener('pointermove', e => { if (painting) splat(e); });
+  canvas.addEventListener('pointerup', () => painting = false);
+  canvas.addEventListener('pointercancel', () => painting = false);
+
+  // ---------- Controles ----------
+  const palWrap = $('palettes');
+  PALETTES.forEach((pal, i) => {
+    const b = document.createElement('button');
+    b.className = 'pal' + (i === 0 ? ' active' : '');
+    b.title = pal.name;
+    const h1 = pal.hue, h2 = (pal.hue + Math.min(pal.spread, 300) / 2) % 360;
+    b.style.background = pal.spread >= 360
+      ? 'linear-gradient(90deg, hsl(0,90%,60%), hsl(60,90%,60%), hsl(140,90%,55%), hsl(220,90%,60%), hsl(300,90%,60%))'
+      : `linear-gradient(90deg, hsl(${h1 - pal.spread / 2},${pal.sat}%,${pal.light}%), hsl(${h2},${pal.sat}%,${pal.light}%))`;
+    b.onclick = () => setPalette(i);
+    palWrap.appendChild(b);
+  });
+
+  function setPalette(i) {
+    state.palette = PALETTES[i];
+    [...palWrap.children].forEach((b, j) => b.classList.toggle('active', i === j));
+    particles.forEach(p => p.hueOff = (Math.random() - 0.5) * state.palette.spread);
+    document.body.style.background = state.palette.bg;
+  }
+
+  const sliders = {
+    sym:   v => v + 'x',
+    count: v => v,
+    chaos: v => v + '%',
+    speed: v => v + '%',
+    width: v => (v / 10).toFixed(1) + 'px',
+    trail: v => v >= 100 ? '∞' : v + '%',
+  };
+  Object.entries(sliders).forEach(([id, fmt]) => {
+    const el = $(id), out = $('v-' + id);
+    const update = () => {
+      state[id] = +el.value;
+      out.textContent = fmt(el.value);
+      if (id === 'count') syncCount();
+    };
+    el.addEventListener('input', update);
+    update();
+  });
+  ['mirror', 'glow', 'drift'].forEach(id => {
+    $(id).addEventListener('change', e => state[id] = e.target.checked);
+  });
+
+  function setSlider(id, v) { $(id).value = v; $(id).dispatchEvent(new Event('input')); }
+  const rand = (a, b) => Math.round(a + Math.random() * (b - a));
+
+  function surprise() {
+    setPalette(rand(0, PALETTES.length - 1));
+    setSlider('sym', rand(3, 14));
+    setSlider('count', rand(8, 60) * 10);
+    setSlider('chaos', rand(5, 95));
+    setSlider('speed', rand(15, 70));
+    setSlider('width', rand(4, 35));
+    setSlider('trail', rand(75, 100));
+    $('mirror').checked = state.mirror = Math.random() < 0.7;
+    seedA = Math.random() * 1000; seedB = Math.random() * 1000;
+    clear();
+    particles = []; syncCount();
+  }
+
+  function togglePause() {
+    state.paused = !state.paused;
+    $('b-pause').textContent = state.paused ? '▶ Continuar' : '⏸ Pausar';
+  }
+
+  function save() {
+    // Exporta com fundo sólido (o canvas já tem fundo pintado)
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.download = `caleidoscopio-${stamp}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }, 'image/png');
+  }
+
+  function togglePanel() {
+    const hidden = $('panel').classList.toggle('hidden');
+    $('fab').classList.toggle('show', hidden);
+  }
+
+  $('b-random').onclick = surprise;
+  $('b-pause').onclick = togglePause;
+  $('b-clear').onclick = clear;
+  $('b-save').onclick = save;
+  $('b-hide').onclick = togglePanel;
+  $('fab').onclick = togglePanel;
+
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') { e.preventDefault(); togglePause(); }
+    else if (k === 'r') surprise();
+    else if (k === 'c') clear();
+    else if (k === 's') save();
+    else if (k === 'h') togglePanel();
+  });
+
+  window.addEventListener('resize', resize);
+  resize();
+  loop();
+})();
+</script>
+</body>
+</html>
